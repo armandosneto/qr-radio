@@ -289,8 +289,8 @@ export default function EmitterClient() {
 function HudStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-2 rounded bg-gray-100 px-2 py-1">
-      <dt className="text-gray-500">{label}</dt>
-      <dd className="font-mono">{value}</dd>
+      <dt className="text-gray-600">{label}</dt>
+      <dd className="font-mono font-semibold text-gray-900">{value}</dd>
     </div>
   );
 }

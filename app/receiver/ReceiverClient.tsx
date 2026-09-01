@@ -244,6 +244,12 @@ export default function ReceiverClient() {
     try {
       const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const audioContext = new AudioCtx({ sampleRate: SAMPLE_RATE });
+      if (audioContext.state === 'suspended') {
+        // Some mobile browsers still start an AudioContext suspended even
+        // inside a user-gesture handler — silent failure with no error
+        // otherwise, since audio just never starts flowing.
+        await audioContext.resume();
+      }
       await audioContext.audioWorklet.addModule('/ring-buffer-processor.js');
       const workletNode = new AudioWorkletNode(audioContext, 'ring-buffer-processor', {
         numberOfInputs: 0,
@@ -341,8 +347,8 @@ export default function ReceiverClient() {
 function HudStat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex justify-between gap-2 rounded bg-gray-100 px-2 py-1">
-      <dt className="text-gray-500">{label}</dt>
-      <dd className="font-mono">{value}</dd>
+      <dt className="text-gray-600">{label}</dt>
+      <dd className="font-mono font-semibold text-gray-900">{value}</dd>
     </div>
   );
 }
