@@ -374,12 +374,12 @@ export default function ReceiverClient() {
   }, [stopEverything]);
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
+    <div className="relative z-10 mx-auto flex min-w-0 max-w-3xl flex-col gap-6 p-6">
       <h1 className="aero-title text-3xl font-extrabold tracking-tight">📷 QR Radio — Receptor</h1>
 
       <div className="aero-panel flex flex-col gap-2 p-4">
         <span className="text-sm font-bold text-(--aero-blue-dark)">Diagnóstico</span>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
           <DiagStat
             label="contexto seguro (HTTPS)"
             {...(diagnostics.secureContext
@@ -437,7 +437,7 @@ export default function ReceiverClient() {
         )}
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <HudStat label="stream_id" value={hud.streamId ?? '—'} />
         <HudStat label="seq atual" value={hud.seq ?? '—'} />
         <HudStat label="fps decodificação" value={hud.decodeFps.toFixed(0)} />

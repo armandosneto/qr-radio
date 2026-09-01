@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function Home() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-10 px-6 py-20 text-center">
+    <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-10 px-6 py-20 text-center">
       <div className="flex flex-col items-center gap-3">
         <span className="aero-chip px-4 py-1 text-xs font-semibold tracking-wide text-(--aero-blue-dark) uppercase">
           rádio sem rede

@@ -38,6 +38,7 @@ export default function EmitterClient() {
   const [hud, setHud] = useState<Hud>({ seq: 0, isRepeat: false, actualFps: 0, bytesPerFrame: 0, throughputKbps: 0 });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const streamIdRef = useRef(0);
   const streamStartRef = useRef(0);
   const schedulePointerRef = useRef(0);
@@ -77,6 +78,38 @@ export default function EmitterClient() {
 
   const displayStatus: Status = packetizeError ? 'error' : status;
   const displayError = packetizeError ?? errorMessage;
+
+  // A <canvas> is a replaced element: browsers size its CSS box from
+  // width/height *pixel attributes* first. QRCode.toCanvas mutates those
+  // attributes on every redraw (each QR needs its own module count/pixel
+  // size), and — inside a flex layout — that mutation can retroactively
+  // perturb an ancestor's own `aspect-ratio`-derived size too (a replaced
+  // descendant's intrinsic ratio can feed back into a flex-item ancestor's
+  // sizing). CSS alone couldn't hold a stable square through that, so the
+  // canvas's pixel size is pinned directly via inline style instead of any
+  // CSS mechanism, and reapplied after every single redraw — not just on
+  // wrapper resize — so a mid-draw attribute mutation can never leave it
+  // momentarily incorrect.
+  const applyCanvasSizeRef = useRef<(size: number) => void>(() => {});
+  useEffect(() => {
+    const wrapper = canvasWrapperRef.current;
+    const canvas = canvasRef.current;
+    if (!wrapper || !canvas) return;
+
+    const applySize = (size: number) => {
+      canvas.style.width = `${size}px`;
+      canvas.style.height = `${size}px`;
+    };
+    applyCanvasSizeRef.current = applySize;
+    applySize(wrapper.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width) applySize(width);
+    });
+    observer.observe(wrapper);
+    return () => observer.disconnect();
+  }, []);
 
   const handleFile = useCallback(async (file: File) => {
     setStatus('encoding');
@@ -152,10 +185,15 @@ export default function EmitterClient() {
         version: qrVersion,
         errorCorrectionLevel: ecc,
         margin: 2,
-      }).catch((err) => {
-        setStatus('error');
-        setErrorMessage(err instanceof Error ? err.message : String(err));
-      });
+      })
+        .then(() => {
+          const wrapper = canvasWrapperRef.current;
+          if (wrapper) applyCanvasSizeRef.current(wrapper.getBoundingClientRect().width);
+        })
+        .catch((err) => {
+          setStatus('error');
+          setErrorMessage(err instanceof Error ? err.message : String(err));
+        });
 
       const history = tickHistoryRef.current;
       history.push({ t: now, bytes: wireBytes.length });
@@ -195,7 +233,7 @@ export default function EmitterClient() {
   const totalDurationMs = packetizeResult?.totalDurationMs ?? 0;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
+    <div className="relative z-10 mx-auto flex min-w-0 max-w-3xl flex-col gap-6 p-6">
       <h1 className="aero-title text-3xl font-extrabold tracking-tight">📡 QR Radio — Emissor</h1>
 
       {!webCodecsOk && (
@@ -205,9 +243,17 @@ export default function EmitterClient() {
         </div>
       )}
 
-      <div className="aero-panel flex flex-col gap-2 p-4">
-        <input type="file" accept=".mp3,.wav,.m4a,.flac,audio/*" onChange={onFileInputChange} className="aero-file-input" />
-        {fileName && <span className="text-sm font-medium text-(--aero-ink-soft)">{fileName}</span>}
+      <div className="aero-panel flex min-w-0 flex-col gap-2 p-4">
+        <label className="aero-button aero-button-blue w-fit cursor-pointer">
+          📂 Escolher arquivo
+          <input
+            type="file"
+            accept=".mp3,.wav,.m4a,.flac,audio/*"
+            onChange={onFileInputChange}
+            className="sr-only"
+          />
+        </label>
+        {fileName && <span className="text-sm font-medium break-all text-(--aero-ink-soft)">{fileName}</span>}
         {status === 'encoding' && (
           <div className="h-2 w-full overflow-hidden rounded-full bg-white/60 shadow-inner">
             <div
@@ -219,7 +265,9 @@ export default function EmitterClient() {
         {displayStatus === 'error' && displayError && <div className="text-sm font-medium text-(--aero-red-dark)">{displayError}</div>}
       </div>
 
-      <canvas ref={canvasRef} className="aero-screen mx-auto" />
+      <div ref={canvasWrapperRef} className="mx-auto w-full max-w-125">
+        <canvas ref={canvasRef} className="aero-screen" />
+      </div>
 
       <div className="aero-panel flex flex-wrap items-center gap-4 p-4">
         <button onClick={togglePlay} disabled={!packetizeResult} className="aero-button aero-button-blue">
@@ -275,7 +323,7 @@ export default function EmitterClient() {
         />
       </label>
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+      <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <HudStat label="seq atual" value={`${hud.seq}${hud.isRepeat ? ' (repeat)' : ''}`} />
         <HudStat label="fps real" value={hud.actualFps.toFixed(0)} />
         <HudStat label="bytes/frame" value={`${hud.bytesPerFrame} B`} />
