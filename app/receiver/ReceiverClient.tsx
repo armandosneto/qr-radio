@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OpusDecoder } from 'opus-decoder';
 import { JitterBuffer, DEFAULT_TARGET_BUFFER_MS } from '@/lib/jitter-buffer';
 import type { DecodedPacket } from '@/lib/protocol';
@@ -58,10 +58,48 @@ const INITIAL_HUD: Hud = {
   latencyMs: 0,
 };
 
+type PermissionCheck = PermissionState | 'unsupported' | 'checking';
+type Platform = 'ios' | 'android' | 'desktop/outro';
+
+interface StaticDiagnostics {
+  secureContext: boolean;
+  hasGetUserMedia: boolean;
+  platform: Platform;
+}
+
+interface Diagnostics extends StaticDiagnostics {
+  cameraPermission: PermissionCheck;
+  audioContextState: AudioContextState | 'não iniciado';
+}
+
+function detectPlatform(): Platform {
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && navigator.maxTouchPoints > 1);
+  if (isIOS) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  return 'desktop/outro';
+}
+
+// Read once — these don't change over the component's lifetime, so this is
+// a plain render-time computation (like isOpusEncodeSupported on the
+// emitter), not an effect. Only the truly async/subscription-based bits
+// below (camera permission, AudioContext state) need useEffect/useState.
+function readStaticDiagnostics(): StaticDiagnostics {
+  return {
+    secureContext: window.isSecureContext,
+    hasGetUserMedia: !!navigator.mediaDevices?.getUserMedia,
+    platform: detectPlatform(),
+  };
+}
+
 export default function ReceiverClient() {
   const [status, setStatus] = useState<Status>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hud, setHud] = useState<Hud>(INITIAL_HUD);
+  const staticDiagnostics = useMemo(() => readStaticDiagnostics(), []);
+  const [cameraPermission, setCameraPermission] = useState<PermissionCheck>('checking');
+  const [audioContextState, setAudioContextState] = useState<AudioContextState | 'não iniciado'>('não iniciado');
+  const diagnostics: Diagnostics = { ...staticDiagnostics, cameraPermission, audioContextState };
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -103,9 +141,38 @@ export default function ReceiverClient() {
     void audioContextRef.current?.close();
     audioContextRef.current = null;
     jitterBufferRef.current?.reset();
+    setAudioContextState('não iniciado');
   }, []);
 
   useEffect(() => stopEverything, [stopEverything]);
+
+  // Runs once on mount so the page can tell you *why* "Ouvir" won't work
+  // before you even click it — camera permission already denied, browser
+  // doesn't even report permission state, etc. — instead of a silent
+  // failure you have to guess at. (secureContext/hasGetUserMedia/platform
+  // are static for the component's lifetime, so those are read once via
+  // the staticDiagnostics memo above, not here.)
+  useEffect(() => {
+    let status: PermissionStatus | null = null;
+    navigator.permissions
+      ?.query({ name: 'camera' as PermissionName })
+      .then((result) => {
+        status = result;
+        setCameraPermission(result.state);
+        result.onchange = () => {
+          setCameraPermission(result.state);
+        };
+      })
+      .catch(() => {
+        // Safari/iOS doesn't implement the Permissions API for "camera" —
+        // that's itself useful information, not an error to hide.
+        setCameraPermission('unsupported');
+      });
+
+    return () => {
+      if (status) status.onchange = null;
+    };
+  }, []);
 
   const postSilenceFrame = useCallback(() => {
     workletNodeRef.current?.port.postMessage({ type: 'pcm', samples: new Float32Array(SAMPLES_PER_FRAME) });
@@ -208,6 +275,8 @@ export default function ReceiverClient() {
     try {
       const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const audioContext = new AudioCtx({ sampleRate: SAMPLE_RATE });
+      audioContext.addEventListener('statechange', () => setAudioContextState(audioContext.state));
+      setAudioContextState(audioContext.state);
       if (audioContext.state === 'suspended') {
         // Some mobile browsers still start an AudioContext suspended even
         // inside a user-gesture handler — silent failure with no error
@@ -281,6 +350,33 @@ export default function ReceiverClient() {
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
       <h1 className="text-2xl font-semibold">QR Radio — Receptor</h1>
 
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-semibold text-gray-700">Diagnóstico</span>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+          <DiagStat
+            label="contexto seguro (HTTPS)"
+            {...(diagnostics.secureContext
+              ? { text: 'sim', status: 'ok' as const }
+              : { text: 'não — câmera vai falhar', status: 'bad' as const })}
+          />
+          <DiagStat
+            label="suporte a câmera"
+            {...(diagnostics.hasGetUserMedia
+              ? { text: 'sim', status: 'ok' as const }
+              : { text: 'não suportado', status: 'bad' as const })}
+          />
+          <DiagStat label="permissão de câmera" {...cameraPermissionDisplay(diagnostics.cameraPermission)} />
+          <DiagStat label="AudioContext" {...audioContextDisplay(diagnostics.audioContextState)} />
+          <DiagStat label="plataforma" text={diagnostics.platform} status="neutral" />
+        </dl>
+        {diagnostics.platform === 'ios' && (
+          <span className="text-xs text-amber-700">
+            iOS detectado — todo navegador aqui roda sobre WebKit (mesmo o Chrome). Testado com o decoder WASM, mas se
+            não sair som mesmo com tudo verde acima, pode ser um limite do WebKit que eu ainda não vi.
+          </span>
+        )}
+      </div>
+
       <video ref={videoRef} className="mx-auto w-full max-w-md rounded border border-gray-300" muted playsInline />
 
       <div className="flex items-center gap-4">
@@ -321,4 +417,50 @@ function HudStat({ label, value }: { label: string; value: string | number }) {
       <dd className="font-mono font-semibold text-gray-900">{value}</dd>
     </div>
   );
+}
+
+type DiagStatus = 'ok' | 'warn' | 'bad' | 'neutral';
+
+const DIAG_STATUS_CLASS: Record<DiagStatus, string> = {
+  ok: 'text-green-700',
+  warn: 'text-amber-700',
+  bad: 'text-red-700',
+  neutral: 'text-gray-900',
+};
+
+function DiagStat({ label, text, status }: { label: string; text: string; status: DiagStatus }) {
+  return (
+    <div className="flex justify-between gap-2 rounded bg-gray-100 px-2 py-1">
+      <dt className="text-gray-600">{label}</dt>
+      <dd className={`font-mono font-semibold ${DIAG_STATUS_CLASS[status]}`}>{text}</dd>
+    </div>
+  );
+}
+
+function cameraPermissionDisplay(permission: PermissionCheck): { text: string; status: DiagStatus } {
+  switch (permission) {
+    case 'granted':
+      return { text: 'concedida', status: 'ok' };
+    case 'denied':
+      return { text: 'negada — libere nas configurações do site', status: 'bad' };
+    case 'prompt':
+      return { text: 'ainda não pedida', status: 'warn' };
+    case 'unsupported':
+      return { text: 'navegador não informa (normal no Safari)', status: 'warn' };
+    default:
+      return { text: 'checando…', status: 'neutral' };
+  }
+}
+
+function audioContextDisplay(state: Diagnostics['audioContextState']): { text: string; status: DiagStatus } {
+  switch (state) {
+    case 'running':
+      return { text: 'tocando', status: 'ok' };
+    case 'suspended':
+      return { text: 'suspenso — sem som', status: 'bad' };
+    case 'closed':
+      return { text: 'fechado', status: 'warn' };
+    default:
+      return { text: 'não iniciado', status: 'neutral' };
+  }
 }
