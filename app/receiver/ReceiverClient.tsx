@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { OpusDecoder } from 'opus-decoder';
 import { JitterBuffer, DEFAULT_TARGET_BUFFER_MS } from '@/lib/jitter-buffer';
 import type { DecodedPacket } from '@/lib/protocol';
 
@@ -73,12 +74,11 @@ export default function ReceiverClient() {
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const decoderRef = useRef<{ current: AudioDecoder | null }>({ current: null });
+  const decoderRef = useRef<OpusDecoder | null>(null);
   const pumpIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rvfcHandleRef = useRef<number | null>(null);
   const inFlightRef = useRef(false);
   const frameIdRef = useRef(0);
-  const chunkTimestampUsRef = useRef(0);
   const ringBufferedMsRef = useRef(0);
 
   const decodeEventsRef = useRef<{ t: number; ok: boolean }[]>([]);
@@ -96,8 +96,8 @@ export default function ReceiverClient() {
     workerRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-    decoderRef.current.current?.close();
-    decoderRef.current.current = null;
+    decoderRef.current?.free();
+    decoderRef.current = null;
     workletNodeRef.current?.disconnect();
     workletNodeRef.current = null;
     void audioContextRef.current?.close();
@@ -106,33 +106,6 @@ export default function ReceiverClient() {
   }, []);
 
   useEffect(() => stopEverything, [stopEverything]);
-
-  // `error` below needs to call "the current version of this function" to
-  // rebuild a fresh decoder — a ref indirection (assigned in an effect, not
-  // during render) instead of naming the useCallback binding directly,
-  // since WebCodecs closes a decoder permanently on error and one bad frame
-  // must not take down playback for the rest of the session.
-  const createAudioDecoderRef = useRef<() => AudioDecoder>(() => {
-    throw new Error('decoder factory not ready yet');
-  });
-  const createAudioDecoder = useCallback(() => {
-    const decoder = new AudioDecoder({
-      output: (audioData) => {
-        const samples = new Float32Array(audioData.numberOfFrames);
-        audioData.copyTo(samples, { planeIndex: 0, format: 'f32-planar' });
-        audioData.close();
-        workletNodeRef.current?.port.postMessage({ type: 'pcm', samples }, [samples.buffer]);
-      },
-      error: () => {
-        decoderRef.current.current = createAudioDecoderRef.current();
-      },
-    });
-    decoder.configure({ codec: 'opus', sampleRate: SAMPLE_RATE, numberOfChannels: 1 });
-    return decoder;
-  }, []);
-  useEffect(() => {
-    createAudioDecoderRef.current = createAudioDecoder;
-  }, [createAudioDecoder]);
 
   const postSilenceFrame = useCallback(() => {
     workletNodeRef.current?.port.postMessage({ type: 'pcm', samples: new Float32Array(SAMPLES_PER_FRAME) });
@@ -145,25 +118,16 @@ export default function ReceiverClient() {
     if (!jitterBuffer.isReady(now)) return;
 
     const frame = jitterBuffer.pullFrame();
-    if (!frame || !frame.bytes) {
+    const decoder = decoderRef.current;
+    if (!frame || !frame.bytes || !decoder) {
       postSilenceFrame();
     } else {
-      const decoder = decoderRef.current.current;
-      if (decoder && decoder.state === 'configured') {
-        chunkTimestampUsRef.current += FRAME_MS * 1000;
-        try {
-          decoder.decode(
-            new EncodedAudioChunk({
-              type: 'key',
-              timestamp: chunkTimestampUsRef.current,
-              data: frame.bytes as unknown as BufferSource,
-            }),
-          );
-        } catch {
-          postSilenceFrame();
-        }
-      } else {
+      const { channelData, samplesDecoded, errors } = decoder.decodeFrame(frame.bytes);
+      if (errors.length > 0 || samplesDecoded === 0) {
         postSilenceFrame();
+      } else {
+        const samples = channelData[0].slice(0, samplesDecoded);
+        workletNodeRef.current?.port.postMessage({ type: 'pcm', samples }, [samples.buffer]);
       }
     }
 
@@ -289,7 +253,13 @@ export default function ReceiverClient() {
       worker.onmessage = handleWorkerMessage;
       workerRef.current = worker;
 
-      decoderRef.current.current = createAudioDecoder();
+      // WASM Opus decoder (works on every browser, iOS/Safari included —
+      // unlike WebCodecs' AudioDecoder, which WebKit doesn't support for
+      // Opus). channels: 1 matches our mono encode; without it this
+      // defaults to stereo and misreads our headerless raw frames.
+      const decoder = new OpusDecoder({ channels: 1 }); // 48000 is already the library default
+      await decoder.ready;
+      decoderRef.current = decoder;
 
       rvfcHandleRef.current = video.requestVideoFrameCallback(onVideoFrame);
       pumpIntervalRef.current = setInterval(pump, PUMP_INTERVAL_MS);
@@ -300,7 +270,7 @@ export default function ReceiverClient() {
       setStatus('error');
       setErrorMessage(err instanceof Error ? err.message : String(err));
     }
-  }, [createAudioDecoder, handleWorkerMessage, onVideoFrame, pump, stopEverything]);
+  }, [handleWorkerMessage, onVideoFrame, pump, stopEverything]);
 
   const stop = useCallback(() => {
     stopEverything();
