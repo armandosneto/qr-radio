@@ -8,7 +8,17 @@ export default function Home() {
           rádio sem rede
         </span>
         <h1 className="aero-title text-5xl font-extrabold tracking-tight sm:text-6xl">QR Radio</h1>
-        <p className="max-w-md text-base font-medium text-(--aero-ink-soft)">
+        {/* --aero-ink-soft reads fine inside a glass panel (it's tuned for
+            that), but this paragraph sits directly on the raw sky gradient
+            — against the mid-brightness band of it, that color measures
+            under WCAG AA contrast (~3:1). --aero-ink is dark enough to
+            clear AA against the gradient's darkest point, so it's used
+            here instead; the text-shadow adds a bit more separation on
+            top of that, same trick as the title above it. */}
+        <p
+          className="max-w-md text-base font-medium text-(--aero-ink)"
+          style={{ textShadow: '0 1px 2px rgba(255,255,255,0.6)' }}
+        >
           Áudio transmitido em tempo real por uma sequência de QR codes na tela — sem Wi-Fi, sem Bluetooth, sem
           servidor no meio. Aponte a câmera e ouça de onde o emissor estiver.
         </p>

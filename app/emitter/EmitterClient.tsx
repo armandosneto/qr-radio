@@ -253,15 +253,22 @@ export default function EmitterClient() {
             className="sr-only"
           />
         </label>
-        {fileName && <span className="text-sm font-medium break-all text-(--aero-ink-soft)">{fileName}</span>}
-        {status === 'encoding' && (
-          <div className="h-2 w-full overflow-hidden rounded-full bg-white/60 shadow-inner">
-            <div
-              className="h-full rounded-full bg-linear-to-r from-(--aero-cyan) to-(--aero-blue) transition-all"
-              style={{ width: `${Math.round(progress * 100)}%` }}
-            />
-          </div>
-        )}
+        {/* min-h-5 + invisible (not conditional unmount) reserves the line's
+            space up front, instead of the filename shoving the progress bar
+            and everything below it down the instant a file is picked. */}
+        <span className={`min-h-5 text-sm font-medium break-all text-(--aero-ink-soft) ${fileName ? '' : 'invisible'}`}>
+          {fileName || 'placeholder'}
+        </span>
+        {/* Always rendered (opacity toggled, not mounted/unmounted) so
+            starting/finishing encoding doesn't shift the canvas below it. */}
+        <div
+          className={`h-2 w-full overflow-hidden rounded-full bg-white/60 shadow-inner transition-opacity ${status === 'encoding' ? 'opacity-100' : 'opacity-0'}`}
+        >
+          <div
+            className="h-full rounded-full bg-linear-to-r from-(--aero-cyan) to-(--aero-blue) transition-all"
+            style={{ width: `${Math.round(progress * 100)}%` }}
+          />
+        </div>
         {displayStatus === 'error' && displayError && <div className="text-sm font-medium text-(--aero-red-dark)">{displayError}</div>}
       </div>
 

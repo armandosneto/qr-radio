@@ -420,7 +420,17 @@ export default function ReceiverClient() {
         )}
       </div>
 
-      <video ref={videoRef} className="aero-screen mx-auto w-full max-w-md" muted playsInline />
+      {/* aspect-[3/4] reserves space up front — a <video> with no srcObject
+          yet has no intrinsic size at all, so without this the camera
+          feed attaching (every time "Ouvir" is pressed) shoves the whole
+          page below it down. 3:4 matches a phone held upright pointing at
+          another screen, this app's primary use case. */}
+      <video
+        ref={videoRef}
+        className="aero-screen mx-auto aspect-3/4 w-full max-w-md object-cover"
+        muted
+        playsInline
+      />
 
       <div className="aero-panel flex items-center gap-4 p-4">
         {status !== 'listening' ? (
