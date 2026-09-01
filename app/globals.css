@@ -113,8 +113,14 @@ body::after {
 }
 
 .aero-chip {
+  /* Data fields (HUD stats, diagnostics) get read quickly and often, and
+     they sit on top of an already-blurred, gradient/bubble backdrop —
+     stacking translucency on translucency there creates visual noise
+     behind the text even where the *average* contrast ratio checks out.
+     Near-opaque instead of glassy: reads as a clean solid card regardless
+     of what's moving/changing behind it. */
   min-width: 0;
-  background: var(--aero-glass-strong);
+  background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 0.75rem;
   box-shadow:
@@ -137,16 +143,21 @@ body::after {
     0 10px 30px rgba(11, 53, 86, 0.25);
 }
 
-/* QR codes are square by definition, but a <canvas> is sized from its
-   width/height pixel attributes, and Chromium doesn't reliably recompute
-   `height: auto` (even with aspect-ratio:1/1 set explicitly) when a
-   library — QRCode.toCanvas — mutates those attributes after the initial
-   layout: percentage/auto sizing on the canvas kept resolving back to its
-   attribute-based intrinsic size no matter what was tried here. Squareness
-   is enforced structurally in EmitterClient.tsx instead: an aspect-square,
-   overflow-hidden wrapper with the canvas absolutely positioned to fill it
-   (inset: 0) — sizing a child from the containing block's box via absolute
-   positioning has no percentage-of-auto-parent ambiguity to get stuck in. */
+/* Canvas sizing itself is handled procedurally in EmitterClient.tsx (a
+   ResizeObserver pins width/height as inline pixel styles, reapplied after
+   every redraw) — see the comment there for why CSS alone couldn't hold a
+   stable square through QRCode.toCanvas repeatedly mutating the canvas's
+   width/height attributes.
+
+   border-radius matters more than it looks here: browsers clip a replaced
+   element's own rendered content to its border-radius, and that was
+   eating into the QR's quiet zone and clipping the corner finder patterns
+   — the very thing a scanner uses to *locate* the code before it even
+   tries to decode data. Scannability over house style: no rounding on the
+   canvas itself, only on the frame border around it. */
+canvas.aero-screen {
+  border-radius: 0;
+}
 
 /* ---------- Glossy buttons ---------- */
 

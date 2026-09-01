@@ -184,7 +184,11 @@ export default function EmitterClient() {
       QRCode.toCanvas(canvas, [{ data: wireBytes, mode: 'byte' }], {
         version: qrVersion,
         errorCorrectionLevel: ecc,
-        margin: 2,
+        // 4 modules of quiet zone (spec minimum is 2) — free in data
+        // capacity, just a bit more padding, and it gives a handheld
+        // camera scanning a moving target more room to lock onto the
+        // finder patterns before decoding.
+        margin: 4,
       })
         .then(() => {
           const wrapper = canvasWrapperRef.current;
