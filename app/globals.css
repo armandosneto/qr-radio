@@ -43,7 +43,7 @@ body {
   color: var(--aero-ink);
   font-family: Arial, Helvetica, sans-serif;
   min-height: 100%;
-  background: var(--aero-sky-floor); /* fallback only — the real backdrop is the fixed layer below */
+  background: #000; /* fallback only — the real backdrop is the fixed layer below */
   position: relative;
 }
 
@@ -62,25 +62,23 @@ body::after {
   background-repeat: no-repeat;
 }
 body::before {
+  /* Testing whether a bright backdrop around the QR hurts camera scanning
+     (auto-exposure/glare on the surrounding screen) — swapped the sky
+     gradient for solid black, kept the bubble highlights as soft glows.
+     Panels/buttons/chips are untouched. */
   background-image:
-    radial-gradient(ellipse 60% 40% at 15% 8%, rgba(255, 255, 255, 0.55), transparent 60%),
-    radial-gradient(ellipse 50% 35% at 85% 5%, rgba(255, 255, 255, 0.35), transparent 55%),
-    radial-gradient(circle 90px at 8% 22%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 70%),
-    radial-gradient(circle 50px at 12% 24%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 75%),
-    radial-gradient(circle 60px at 92% 65%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 70%),
-    radial-gradient(circle 34px at 90% 68%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 75%),
-    linear-gradient(
-      180deg,
-      var(--aero-sky-top) 0%,
-      var(--aero-sky-mid) 38%,
-      var(--aero-sky-low) 72%,
-      var(--aero-sky-floor) 100%
-    );
+    radial-gradient(ellipse 60% 40% at 15% 8%, rgba(255, 255, 255, 0.14), transparent 60%),
+    radial-gradient(ellipse 50% 35% at 85% 5%, rgba(255, 255, 255, 0.1), transparent 55%),
+    radial-gradient(circle 90px at 8% 22%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 50px at 12% 24%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 75%),
+    radial-gradient(circle 60px at 92% 65%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 34px at 90% 68%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 75%);
+  background-color: #000;
 }
 body::after {
   background-image:
-    radial-gradient(circle 40px at 78% 12%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 75%),
-    radial-gradient(circle 130px at 50% 92%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 70%);
+    radial-gradient(circle 40px at 78% 12%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 75%),
+    radial-gradient(circle 130px at 50% 92%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 70%);
 }
 
 /* Non-positioned content paints *before* any positioned element in CSS's
