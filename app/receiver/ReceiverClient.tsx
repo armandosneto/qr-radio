@@ -174,6 +174,33 @@ export default function ReceiverClient() {
     };
   }, []);
 
+  // Standalone sanity check, deliberately decoupled from the QR/Opus
+  // pipeline: proves (or disproves) that this device actually gets sound
+  // from a Web Audio graph to its speakers at all — mute switch, silent
+  // mode, output routing, an OS-level audio bug — before blaming decode.
+  const [testToneState, setTestToneState] = useState<'idle' | 'playing' | 'error'>('idle');
+  const testTone = useCallback(async () => {
+    setTestToneState('playing');
+    try {
+      const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') await ctx.resume();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.2;
+      osc.frequency.value = 880;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+      osc.onended = () => {
+        void ctx.close();
+        setTestToneState('idle');
+      };
+    } catch {
+      setTestToneState('error');
+    }
+  }, []);
+
   const postSilenceFrame = useCallback(() => {
     workletNodeRef.current?.port.postMessage({ type: 'pcm', samples: new Float32Array(SAMPLES_PER_FRAME) });
   }, []);
@@ -369,6 +396,22 @@ export default function ReceiverClient() {
           <DiagStat label="AudioContext" {...audioContextDisplay(diagnostics.audioContextState)} />
           <DiagStat label="plataforma" text={diagnostics.platform} status="neutral" />
         </dl>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void testTone()}
+            disabled={testToneState === 'playing'}
+            className="rounded bg-gray-700 px-3 py-1 text-sm text-white disabled:opacity-40"
+          >
+            {testToneState === 'playing' ? 'Tocando bipe…' : '🔊 Testar som (bipe de 0.4s)'}
+          </button>
+          <span className="text-xs text-gray-600">
+            Isolado do resto do app — se você não ouvir isso, o problema é volume/modo silencioso/roteamento do
+            aparelho, não o decoder.
+          </span>
+        </div>
+        {testToneState === 'error' && (
+          <span className="text-xs text-red-600">Nem o AudioContext do teste conseguiu iniciar.</span>
+        )}
         {diagnostics.platform === 'ios' && (
           <span className="text-xs text-amber-700">
             iOS detectado — todo navegador aqui roda sobre WebKit (mesmo o Chrome). Testado com o decoder WASM, mas se
