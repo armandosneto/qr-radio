@@ -196,38 +196,37 @@ export default function EmitterClient() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
-      <h1 className="text-2xl font-semibold">QR Radio — Emissor</h1>
+      <h1 className="aero-title text-3xl font-extrabold tracking-tight">📡 QR Radio — Emissor</h1>
 
       {!webCodecsOk && (
-        <div className="rounded border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="aero-panel border-amber-300/70 p-3 text-sm font-medium text-amber-900">
           Este navegador não suporta WebCodecs AudioEncoder(opus) (necessário Chrome/Edge). O encode client-side não vai
           funcionar aqui.
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
-        <input type="file" accept=".mp3,.wav,.m4a,.flac,audio/*" onChange={onFileInputChange} />
-        {fileName && <span className="text-sm text-gray-600">{fileName}</span>}
+      <div className="aero-panel flex flex-col gap-2 p-4">
+        <input type="file" accept=".mp3,.wav,.m4a,.flac,audio/*" onChange={onFileInputChange} className="aero-file-input" />
+        {fileName && <span className="text-sm font-medium text-(--aero-ink-soft)">{fileName}</span>}
         {status === 'encoding' && (
-          <div className="h-2 w-full overflow-hidden rounded bg-gray-200">
-            <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.round(progress * 100)}%` }} />
+          <div className="h-2 w-full overflow-hidden rounded-full bg-white/60 shadow-inner">
+            <div
+              className="h-full rounded-full bg-linear-to-r from-(--aero-cyan) to-(--aero-blue) transition-all"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+            />
           </div>
         )}
-        {displayStatus === 'error' && displayError && <div className="text-sm text-red-600">{displayError}</div>}
+        {displayStatus === 'error' && displayError && <div className="text-sm font-medium text-(--aero-red-dark)">{displayError}</div>}
       </div>
 
-      <canvas ref={canvasRef} className="mx-auto rounded border border-gray-300" />
+      <canvas ref={canvasRef} className="aero-screen mx-auto" />
 
-      <div className="flex flex-wrap items-center gap-4">
-        <button
-          onClick={togglePlay}
-          disabled={!packetizeResult}
-          className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-40"
-        >
-          {playing ? 'Pause' : 'Play'}
+      <div className="aero-panel flex flex-wrap items-center gap-4 p-4">
+        <button onClick={togglePlay} disabled={!packetizeResult} className="aero-button aero-button-blue">
+          {playing ? '⏸ Pause' : '▶ Play'}
         </button>
 
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm font-semibold text-(--aero-ink)">
           fps
           <input
             type="range"
@@ -235,13 +234,14 @@ export default function EmitterClient() {
             max={15}
             value={fps}
             onChange={(e) => setFps(Number(e.target.value))}
+            className="aero-range w-24"
           />
           {fps}
         </label>
 
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm font-semibold text-(--aero-ink)">
           versão QR
-          <select value={qrVersion} onChange={(e) => setQrVersion(Number(e.target.value))}>
+          <select value={qrVersion} onChange={(e) => setQrVersion(Number(e.target.value))} className="aero-select">
             {QR_VERSIONS.map((v) => (
               <option key={v} value={v}>
                 V{v}
@@ -250,9 +250,9 @@ export default function EmitterClient() {
           </select>
         </label>
 
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm font-semibold text-(--aero-ink)">
           ECC
-          <select value={ecc} onChange={(e) => setEcc(e.target.value as EccLevel)}>
+          <select value={ecc} onChange={(e) => setEcc(e.target.value as EccLevel)} className="aero-select">
             {ECC_LEVELS.map((l) => (
               <option key={l} value={l}>
                 {l}
@@ -262,7 +262,7 @@ export default function EmitterClient() {
         </label>
       </div>
 
-      <label className="flex flex-col gap-1 text-sm">
+      <label className="aero-panel flex flex-col gap-1 p-4 text-sm font-semibold text-(--aero-ink)">
         posição
         <input
           type="range"
@@ -271,10 +271,11 @@ export default function EmitterClient() {
           value={Math.min(positionMs, totalDurationMs)}
           onChange={onSeek}
           disabled={!packetizeResult}
+          className="aero-range w-full"
         />
       </label>
 
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <HudStat label="seq atual" value={`${hud.seq}${hud.isRepeat ? ' (repeat)' : ''}`} />
         <HudStat label="fps real" value={hud.actualFps.toFixed(0)} />
         <HudStat label="bytes/frame" value={`${hud.bytesPerFrame} B`} />
@@ -288,9 +289,9 @@ export default function EmitterClient() {
 
 function HudStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-2 rounded bg-gray-100 px-2 py-1">
-      <dt className="text-gray-600">{label}</dt>
-      <dd className="font-mono font-semibold text-gray-900">{value}</dd>
+    <div className="aero-chip flex justify-between gap-2 px-3 py-2">
+      <dt className="text-(--aero-ink-soft)">{label}</dt>
+      <dd className="font-mono font-semibold text-(--aero-blue-dark)">{value}</dd>
     </div>
   );
 }

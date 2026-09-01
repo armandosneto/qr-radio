@@ -1,8 +1,35 @@
 @import "tailwindcss";
 
+/*
+ * Frutiger Aero: glossy glass, sky-blue gradients, aqua/leaf accents,
+ * bubble highlights. This is a fixed light aesthetic on purpose — Aero
+ * glass reads as "bright sky + wet glass," which doesn't have a coherent
+ * dark-mode counterpart, so the page opts out of prefers-color-scheme
+ * entirely and always renders the same palette.
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #eaf6ff;
+  --foreground: #0b3556;
+
+  --aero-sky-top: #0a6bb5;
+  --aero-sky-mid: #4fb3e8;
+  --aero-sky-low: #cdeeff;
+  --aero-sky-floor: #f3fbff;
+
+  --aero-blue: #0d8ddb;
+  --aero-blue-dark: #075f96;
+  --aero-cyan: #16c7d6;
+  --aero-green: #6cc24a;
+  --aero-green-dark: #4a9c2e;
+  --aero-red: #e0524a;
+  --aero-red-dark: #b3352e;
+
+  --aero-glass: rgba(255, 255, 255, 0.55);
+  --aero-glass-strong: rgba(255, 255, 255, 0.78);
+  --aero-glass-border: rgba(255, 255, 255, 0.85);
+  --aero-ink: #0b3556;
+  --aero-ink-soft: #35597a;
 }
 
 @theme inline {
@@ -12,15 +39,229 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  color: var(--aero-ink);
+  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse 60% 40% at 15% 8%, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(ellipse 50% 35% at 85% 5%, rgba(255, 255, 255, 0.35), transparent 55%),
+    linear-gradient(
+      180deg,
+      var(--aero-sky-top) 0%,
+      var(--aero-sky-mid) 38%,
+      var(--aero-sky-low) 72%,
+      var(--aero-sky-floor) 100%
+    );
+  position: relative;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Floating bubbles — pure CSS, fixed to the viewport so they drift behind scrolling content. */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+}
+body::before {
+  background-image:
+    radial-gradient(circle 90px at 8% 22%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 50px at 12% 24%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 75%),
+    radial-gradient(circle 60px at 92% 65%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(circle 34px at 90% 68%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 75%);
+}
+body::after {
+  background-image:
+    radial-gradient(circle 40px at 78% 12%, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 75%),
+    radial-gradient(circle 130px at 50% 92%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 70%);
+}
+
+#__next,
+body > div:first-child {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Glass panels ---------- */
+
+.aero-panel {
+  background: var(--aero-glass);
+  border: 1px solid var(--aero-glass-border);
+  border-radius: 1.25rem;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 8px 24px rgba(11, 53, 86, 0.18);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.aero-chip {
+  background: var(--aero-glass-strong);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 0.75rem;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 2px 6px rgba(11, 53, 86, 0.12);
+}
+
+.aero-screen {
+  background: #eef8ff;
+  border: 6px solid rgba(255, 255, 255, 0.9);
+  border-radius: 1.5rem;
+  box-shadow:
+    0 2px 0 rgba(255, 255, 255, 0.9) inset,
+    0 0 0 1px rgba(13, 141, 219, 0.25),
+    0 10px 30px rgba(11, 53, 86, 0.25);
+}
+
+/* ---------- Glossy buttons ---------- */
+
+.aero-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.6rem 1.4rem;
+  font-weight: 600;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 6px 14px rgba(11, 53, 86, 0.3);
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.15s ease,
+    filter 0.15s ease;
+  overflow: hidden;
+  isolation: isolate;
+}
+.aero-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0) 55%);
+  z-index: 1;
+  pointer-events: none;
+}
+.aero-button::after {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 8%;
+  height: 38%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0));
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.8;
+}
+.aero-button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.aero-button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 3px 8px rgba(11, 53, 86, 0.3);
+}
+.aero-button:disabled {
+  filter: grayscale(0.3) brightness(0.95);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.aero-button-blue {
+  background: linear-gradient(180deg, var(--aero-blue) 0%, var(--aero-blue-dark) 100%);
+}
+.aero-button-green {
+  background: linear-gradient(180deg, var(--aero-green) 0%, var(--aero-green-dark) 100%);
+}
+.aero-button-red {
+  background: linear-gradient(180deg, var(--aero-red) 0%, var(--aero-red-dark) 100%);
+}
+.aero-button-neutral {
+  background: linear-gradient(180deg, #6b8ba3 0%, #3f6482 100%);
+}
+
+/* ---------- Form controls ---------- */
+
+.aero-select {
+  appearance: none;
+  background: var(--aero-glass-strong);
+  border: 1px solid rgba(13, 141, 219, 0.35);
+  border-radius: 0.6rem;
+  padding: 0.3rem 1.6rem 0.3rem 0.6rem;
+  color: var(--aero-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+  background-image: linear-gradient(45deg, transparent 50%, var(--aero-blue-dark) 50%),
+    linear-gradient(135deg, var(--aero-blue-dark) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) center,
+    calc(100% - 9px) center;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+
+.aero-file-input {
+  color: var(--aero-ink-soft);
+  font-weight: 600;
+}
+.aero-file-input::file-selector-button {
+  margin-right: 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  padding: 0.45rem 1.1rem;
+  font-weight: 600;
+  color: white;
+  background: linear-gradient(180deg, var(--aero-blue) 0%, var(--aero-blue-dark) 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  cursor: pointer;
+}
+.aero-file-input::file-selector-button:hover {
+  filter: brightness(1.08);
+}
+
+.aero-range {
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(11, 53, 86, 0.25), rgba(11, 53, 86, 0.12));
+  box-shadow: 0 1px 2px rgba(11, 53, 86, 0.2) inset;
+  outline: none;
+}
+.aero-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 32% 28%, #ffffff 0%, var(--aero-cyan) 45%, var(--aero-blue-dark) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2px 4px rgba(11, 53, 86, 0.4);
+  cursor: pointer;
+}
+.aero-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 32% 28%, #ffffff 0%, var(--aero-cyan) 45%, var(--aero-blue-dark) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2px 4px rgba(11, 53, 86, 0.4);
+  cursor: pointer;
+}
+
+.aero-title {
+  color: var(--aero-blue-dark);
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8),
+    0 2px 8px rgba(13, 141, 219, 0.25);
 }

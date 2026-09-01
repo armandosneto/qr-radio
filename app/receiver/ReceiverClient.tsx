@@ -375,11 +375,11 @@ export default function ReceiverClient() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-6">
-      <h1 className="text-2xl font-semibold">QR Radio — Receptor</h1>
+      <h1 className="aero-title text-3xl font-extrabold tracking-tight">📷 QR Radio — Receptor</h1>
 
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-semibold text-gray-700">Diagnóstico</span>
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+      <div className="aero-panel flex flex-col gap-2 p-4">
+        <span className="text-sm font-bold text-(--aero-blue-dark)">Diagnóstico</span>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
           <DiagStat
             label="contexto seguro (HTTPS)"
             {...(diagnostics.secureContext
@@ -396,50 +396,48 @@ export default function ReceiverClient() {
           <DiagStat label="AudioContext" {...audioContextDisplay(diagnostics.audioContextState)} />
           <DiagStat label="plataforma" text={diagnostics.platform} status="neutral" />
         </dl>
-        <div className="flex items-center gap-2">
+        <div className="mt-1 flex items-center gap-2">
           <button
             onClick={() => void testTone()}
             disabled={testToneState === 'playing'}
-            className="rounded bg-gray-700 px-3 py-1 text-sm text-white disabled:opacity-40"
+            className="aero-button aero-button-neutral text-sm"
           >
             {testToneState === 'playing' ? 'Tocando bipe…' : '🔊 Testar som (bipe de 0.4s)'}
           </button>
-          <span className="text-xs text-gray-600">
+          <span className="text-xs font-medium text-(--aero-ink-soft)">
             Isolado do resto do app — se você não ouvir isso, o problema é volume/modo silencioso/roteamento do
             aparelho, não o decoder.
           </span>
         </div>
         {testToneState === 'error' && (
-          <span className="text-xs text-red-600">Nem o AudioContext do teste conseguiu iniciar.</span>
+          <span className="text-xs font-medium text-(--aero-red-dark)">Nem o AudioContext do teste conseguiu iniciar.</span>
         )}
         {diagnostics.platform === 'ios' && (
-          <span className="text-xs text-amber-700">
+          <span className="text-xs font-medium text-amber-700">
             iOS detectado — todo navegador aqui roda sobre WebKit (mesmo o Chrome). Testado com o decoder WASM, mas se
             não sair som mesmo com tudo verde acima, pode ser um limite do WebKit que eu ainda não vi.
           </span>
         )}
       </div>
 
-      <video ref={videoRef} className="mx-auto w-full max-w-md rounded border border-gray-300" muted playsInline />
+      <video ref={videoRef} className="aero-screen mx-auto w-full max-w-md" muted playsInline />
 
-      <div className="flex items-center gap-4">
+      <div className="aero-panel flex items-center gap-4 p-4">
         {status !== 'listening' ? (
-          <button
-            onClick={() => void start()}
-            disabled={status === 'starting'}
-            className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-40"
-          >
-            {status === 'starting' ? 'Conectando…' : 'Ouvir'}
+          <button onClick={() => void start()} disabled={status === 'starting'} className="aero-button aero-button-blue">
+            {status === 'starting' ? 'Conectando…' : '🎧 Ouvir'}
           </button>
         ) : (
-          <button onClick={stop} className="rounded bg-red-600 px-4 py-2 text-white">
-            Parar
+          <button onClick={stop} className="aero-button aero-button-red">
+            ⏹ Parar
           </button>
         )}
-        {status === 'error' && errorMessage && <span className="text-sm text-red-600">{errorMessage}</span>}
+        {status === 'error' && errorMessage && (
+          <span className="text-sm font-medium text-(--aero-red-dark)">{errorMessage}</span>
+        )}
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <HudStat label="stream_id" value={hud.streamId ?? '—'} />
         <HudStat label="seq atual" value={hud.seq ?? '—'} />
         <HudStat label="fps decodificação" value={hud.decodeFps.toFixed(0)} />
@@ -455,9 +453,9 @@ export default function ReceiverClient() {
 
 function HudStat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex justify-between gap-2 rounded bg-gray-100 px-2 py-1">
-      <dt className="text-gray-600">{label}</dt>
-      <dd className="font-mono font-semibold text-gray-900">{value}</dd>
+    <div className="aero-chip flex justify-between gap-2 px-3 py-2">
+      <dt className="text-(--aero-ink-soft)">{label}</dt>
+      <dd className="font-mono font-semibold text-(--aero-blue-dark)">{value}</dd>
     </div>
   );
 }
@@ -465,16 +463,16 @@ function HudStat({ label, value }: { label: string; value: string | number }) {
 type DiagStatus = 'ok' | 'warn' | 'bad' | 'neutral';
 
 const DIAG_STATUS_CLASS: Record<DiagStatus, string> = {
-  ok: 'text-green-700',
+  ok: 'text-(--aero-green-dark)',
   warn: 'text-amber-700',
-  bad: 'text-red-700',
-  neutral: 'text-gray-900',
+  bad: 'text-(--aero-red-dark)',
+  neutral: 'text-(--aero-ink)',
 };
 
 function DiagStat({ label, text, status }: { label: string; text: string; status: DiagStatus }) {
   return (
-    <div className="flex justify-between gap-2 rounded bg-gray-100 px-2 py-1">
-      <dt className="text-gray-600">{label}</dt>
+    <div className="aero-chip flex justify-between gap-2 px-3 py-2">
+      <dt className="text-(--aero-ink-soft)">{label}</dt>
       <dd className={`font-mono font-semibold ${DIAG_STATUS_CLASS[status]}`}>{text}</dd>
     </div>
   );
