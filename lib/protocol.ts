@@ -13,17 +13,27 @@
  *   seq            4B   segment index, monotonic within a stream
  *   timestampMs    4B   segment's position on the emitter's timeline
  *   flags          1B   bit0: 1 = redundant repeat, 0 = first transmission
- *   payloadLen     2B   byte length of payload
- *   payload        ...  concat of (uint16 len + bytes) per Opus packet
+ *   packetSize     2B   byte length of each Opus packet in this segment (CBR)
+ *   packetCount    1B   how many Opus packets follow
+ *   payload        ...  packetSize * packetCount bytes, back to back
  *   crc32          4B   CRC-32/ISO-HDLC over every byte before this field
  *
- * Fixed overhead: 16 bytes header + 4 bytes trailer = 20 bytes per frame.
+ * Fixed overhead: 17 bytes header + 4 bytes trailer = 21 bytes per frame.
+ *
+ * v1 of this protocol length-prefixed each Opus packet individually (2 bytes
+ * per packet) to allow variable-size packets. v2 (this one) instead assumes
+ * constant-bitrate Opus — true as long as the encoder is configured with
+ * bitrateMode:'constant' (see lib/opus-client-encoder.ts) — and stores one
+ * shared packetSize for the whole segment instead. For a typical 15-16
+ * packet segment that trades 1 extra fixed header byte for 2*N removed
+ * per-packet prefix bytes, a clear net win. packOpusPayload() enforces the
+ * uniform-size assumption at encode time rather than trusting it silently.
  */
 
 export const MAGIC = new Uint8Array([0x51, 0x52]); // "QR"
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
-export const HEADER_SIZE = 16; // magic..payloadLen
+export const HEADER_SIZE = 17; // magic..packetCount
 export const TRAILER_SIZE = 4; // crc32
 export const FIXED_OVERHEAD = HEADER_SIZE + TRAILER_SIZE;
 
@@ -79,42 +89,43 @@ export function crc32(bytes: Uint8Array): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Packs one or more raw Opus packets (already 20ms frames from the encoder)
- * into a single length-prefixed payload blob.
+ * Packs Opus packets for one segment into a single contiguous blob. Requires
+ * every packet to be exactly the same size (constant-bitrate Opus) — throws
+ * immediately if not, rather than silently mis-framing the payload.
  */
-export function packOpusPayload(opusPackets: Uint8Array[]): Uint8Array {
-  let total = 0;
-  for (const p of opusPackets) total += 2 + p.length;
-  const out = new Uint8Array(total);
-  const view = new DataView(out.buffer);
+export function packOpusPayload(opusPackets: Uint8Array[]): { payload: Uint8Array; packetSize: number } {
+  if (opusPackets.length === 0) return { payload: new Uint8Array(0), packetSize: 0 };
+  if (opusPackets.length > 0xff) {
+    throw new ProtocolError(`Too many packets in one segment: ${opusPackets.length} (max 255)`);
+  }
+  const packetSize = opusPackets[0].length;
+  if (packetSize > 0xffff) {
+    throw new ProtocolError(`Opus packet too large: ${packetSize} bytes`);
+  }
+  const payload = new Uint8Array(packetSize * opusPackets.length);
   let offset = 0;
   for (const p of opusPackets) {
-    if (p.length > 0xffff) {
-      throw new ProtocolError(`Opus packet too large: ${p.length} bytes`);
+    if (p.length !== packetSize) {
+      throw new ProtocolError(
+        `Non-uniform Opus packet size in segment: expected ${packetSize}, got ${p.length}. ` +
+          `CBR mode must be enabled on the encoder (bitrateMode:'constant').`,
+      );
     }
-    view.setUint16(offset, p.length, false);
-    offset += 2;
-    out.set(p, offset);
-    offset += p.length;
+    payload.set(p, offset);
+    offset += packetSize;
   }
-  return out;
+  return { payload, packetSize };
 }
 
-export function unpackOpusPayload(payload: Uint8Array): Uint8Array[] {
-  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+export function unpackOpusPayload(payload: Uint8Array, packetSize: number, packetCount: number): Uint8Array[] {
+  if (packetSize * packetCount !== payload.length) {
+    throw new ProtocolError(
+      `Payload length ${payload.length} doesn't match packetSize*packetCount (${packetSize}*${packetCount})`,
+    );
+  }
   const packets: Uint8Array[] = [];
-  let offset = 0;
-  while (offset < payload.length) {
-    if (offset + 2 > payload.length) {
-      throw new ProtocolError('Truncated Opus packet length prefix');
-    }
-    const len = view.getUint16(offset, false);
-    offset += 2;
-    if (offset + len > payload.length) {
-      throw new ProtocolError('Truncated Opus packet body');
-    }
-    packets.push(payload.subarray(offset, offset + len));
-    offset += len;
+  for (let i = 0; i < packetCount; i++) {
+    packets.push(payload.subarray(i * packetSize, (i + 1) * packetSize));
   }
   return packets;
 }
@@ -123,10 +134,7 @@ export function unpackOpusPayload(payload: Uint8Array): Uint8Array[] {
  * Builds one complete, CRC-sealed wire packet for a single QR frame.
  */
 export function encodePacket(header: PacketHeader, opusPackets: Uint8Array[]): Uint8Array {
-  const payload = packOpusPayload(opusPackets);
-  if (payload.length > 0xffff) {
-    throw new ProtocolError(`Payload too large for one packet: ${payload.length} bytes`);
-  }
+  const { payload, packetSize } = packOpusPayload(opusPackets);
 
   const body = new Uint8Array(HEADER_SIZE + payload.length);
   const view = new DataView(body.buffer);
@@ -137,7 +145,8 @@ export function encodePacket(header: PacketHeader, opusPackets: Uint8Array[]): U
   view.setUint32(5, header.seq >>> 0, false);
   view.setUint32(9, header.timestampMs >>> 0, false);
   view.setUint8(13, header.isRepeat ? FLAG_REPEAT : 0);
-  view.setUint16(14, payload.length, false);
+  view.setUint16(14, packetSize, false);
+  view.setUint8(16, opusPackets.length);
   body.set(payload, HEADER_SIZE);
 
   const checksum = crc32(body);
@@ -163,7 +172,9 @@ export function decodePacket(bytes: Uint8Array): DecodedPacket | null {
   const seq = view.getUint32(5, false);
   const timestampMs = view.getUint32(9, false);
   const flags = view.getUint8(13);
-  const payloadLen = view.getUint16(14, false);
+  const packetSize = view.getUint16(14, false);
+  const packetCount = view.getUint8(16);
+  const payloadLen = packetSize * packetCount;
 
   const expectedLen = HEADER_SIZE + payloadLen + TRAILER_SIZE;
   if (bytes.length !== expectedLen) return null;
@@ -175,7 +186,7 @@ export function decodePacket(bytes: Uint8Array): DecodedPacket | null {
   const payload = bytes.subarray(HEADER_SIZE, HEADER_SIZE + payloadLen);
   let opusPackets: Uint8Array[];
   try {
-    opusPackets = unpackOpusPayload(payload);
+    opusPackets = unpackOpusPayload(payload, packetSize, packetCount);
   } catch {
     return null;
   }

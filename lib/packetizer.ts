@@ -59,39 +59,36 @@ export function packetize(opusPackets: Uint8Array[], opts: PacketizeOptions): Pa
     throw new Error('maxPayloadBytes must be positive — QR version/ECC too small for the protocol overhead');
   }
 
-  const segments: Segment[] = [];
-  let cursor = 0;
-  let packetIndex = 0;
-
-  while (cursor < opusPackets.length) {
-    let payloadBytes = 0;
-    const group: Uint8Array[] = [];
-
-    while (
-      cursor < opusPackets.length &&
-      group.length < targetPacketsPerSegment &&
-      payloadBytes + 2 + opusPackets[cursor].length <= maxPayloadBytes
-    ) {
-      payloadBytes += 2 + opusPackets[cursor].length;
-      group.push(opusPackets[cursor]);
-      cursor++;
-    }
-
-    if (group.length === 0) {
-      // A single packet alone exceeds the budget — this is a caller
-      // configuration error (QR version too small for the Opus bitrate),
-      // not something to silently drop.
+  // The wire protocol (v2) stores one packetSize per segment instead of a
+  // per-packet length prefix — it only holds up if every packet really is
+  // the same size (constant-bitrate Opus). Checked once, up front, with a
+  // clear message, rather than failing deep inside encodePacket() per segment.
+  const packetSize = opusPackets.length > 0 ? opusPackets[0].length : 0;
+  for (const p of opusPackets) {
+    if (p.length !== packetSize) {
       throw new Error(
-        `Opus packet of ${opusPackets[cursor].length} bytes exceeds the ${maxPayloadBytes}-byte payload budget`,
+        `Non-uniform Opus packet size: expected ${packetSize}, got ${p.length}. ` +
+          `The encoder must be configured for constant bitrate (bitrateMode:'constant').`,
       );
     }
+  }
+  const packetsPerSegmentCap = packetSize > 0 ? Math.floor(maxPayloadBytes / packetSize) : 0;
+  if (packetsPerSegmentCap === 0) {
+    throw new Error(`Opus packet of ${packetSize} bytes exceeds the ${maxPayloadBytes}-byte payload budget`);
+  }
+  const packetsPerSegment = Math.min(targetPacketsPerSegment, packetsPerSegmentCap);
 
+  const segments: Segment[] = [];
+  let cursor = 0;
+
+  while (cursor < opusPackets.length) {
+    const group = opusPackets.slice(cursor, cursor + packetsPerSegment);
     segments.push({
       seq: segments.length,
-      timestampMs: packetIndex * frameMs,
+      timestampMs: cursor * frameMs,
       opusPackets: group,
     });
-    packetIndex += group.length;
+    cursor += group.length;
   }
 
   const lastSegment = segments[segments.length - 1];

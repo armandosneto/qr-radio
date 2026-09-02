@@ -6,10 +6,24 @@ import { encodePacket, PROTOCOL_VERSION } from '@/lib/protocol';
 import { packetize, maxPayloadFromQrCapacity, type PacketizeResult } from '@/lib/packetizer';
 import { getByteCapacity, type EccLevel } from '@/lib/qr-capacity';
 import { encodeFileToOpusPackets, isOpusEncodeSupported, type EncodeResult } from '@/lib/opus-client-encoder';
+import { computeBudget, MIN_SAFE_BUDGET_RATIO, type BudgetResult } from '@/lib/budget';
 
 const SEGMENT_MS = 400;
 const ECC_LEVELS: EccLevel[] = ['L', 'M', 'Q', 'H'];
 const QR_VERSIONS = [15, 20, 25, 30, 35, 40];
+const BITRATE_OPTIONS = [16_000, 24_000, 32_000, 40_000];
+// Total appearances per segment the current packetizer schedules (original +
+// one repeat) — see lib/packetizer.ts buildSchedule(). computeBudget() needs
+// this to know how many render-loop slots each segment actually costs.
+const REDUNDANCY_FACTOR = 2;
+
+function budgetAdviceMessage(budget: BudgetResult, currentFps: number): string {
+  const neededFps = Math.ceil(budget.minFpsForRealtime * MIN_SAFE_BUDGET_RATIO);
+  return (
+    `Orçamento insuficiente: ${budget.ratio.toFixed(2)}× tempo real (mínimo ${MIN_SAFE_BUDGET_RATIO}×). ` +
+    `Suba o fps para ${neededFps}+ (está em ${currentFps}), ou baixe o bitrate, ou aumente a versão do QR / baixe o ECC.`
+  );
+}
 
 type Status = 'idle' | 'encoding' | 'ready' | 'error';
 
@@ -33,7 +47,15 @@ export default function EmitterClient() {
   const [fps, setFps] = useState(10);
   const [qrVersion, setQrVersion] = useState(25);
   const [ecc, setEcc] = useState<EccLevel>('M');
+  const [bitrate, setBitrate] = useState(24_000);
   const [positionMs, setPositionMs] = useState(0);
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
+
+  const budget = useMemo(
+    () => computeBudget({ bitrateBps: bitrate, qrVersion, ecc, fps, redundancyFactor: REDUNDANCY_FACTOR }),
+    [bitrate, qrVersion, ecc, fps],
+  );
+  const budgetOk = budget.ratio >= MIN_SAFE_BUDGET_RATIO;
 
   const [hud, setHud] = useState<Hud>({ seq: 0, isRepeat: false, actualFps: 0, bytesPerFrame: 0, throughputKbps: 0 });
 
@@ -124,7 +146,7 @@ export default function EmitterClient() {
           'Este navegador não tem WebCodecs AudioEncoder(opus). Use Chrome/Edge, ou implemente o fallback via /api/encode.',
         );
       }
-      const result = await encodeFileToOpusPackets(file, 40_000, (p) => {
+      const result = await encodeFileToOpusPackets(file, bitrate, (p) => {
         setProgress(p.totalMs > 0 ? p.processedMs / p.totalMs : 0);
       });
       streamIdRef.current = (streamIdRef.current + 1) & 0xffff;
@@ -135,12 +157,29 @@ export default function EmitterClient() {
       setStatus('error');
       setErrorMessage(err instanceof Error ? err.message : String(err));
     }
-  }, [webCodecsOk]);
+  }, [webCodecsOk, bitrate]);
 
   const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) void handleFile(file);
+    if (file) {
+      setCurrentFile(file);
+      void handleFile(file);
+    }
   };
+
+  // Changing the bitrate selector re-encodes the already-chosen file instead
+  // of requiring a re-upload — deliberately keyed on `bitrate` alone so this
+  // doesn't also fire (double-encoding) on the initial file pick above.
+  // handleFile is async and its own setState calls all happen after an
+  // await, not synchronously in this effect's body, so the cascading-render
+  // case react-hooks/set-state-in-effect guards against doesn't apply here —
+  // this is exactly "respond to a dependency change by calling an external
+  // system" that effects are for.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (currentFile) void handleFile(currentFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bitrate]);
 
   // Render loop.
   useEffect(() => {
@@ -218,7 +257,7 @@ export default function EmitterClient() {
   }, [playing, packetizeResult, fps, qrVersion, ecc]);
 
   const togglePlay = () => {
-    if (!packetizeResult) return;
+    if (!packetizeResult || (!playing && !budgetOk)) return;
     if (!playing) {
       streamStartRef.current = performance.now() - positionMs;
       lastElapsedRef.current = positionMs;
@@ -244,6 +283,12 @@ export default function EmitterClient() {
         <div className="aero-panel border-amber-300/70 p-3 text-sm font-medium text-amber-900">
           Este navegador não suporta WebCodecs AudioEncoder(opus) (necessário Chrome/Edge). O encode client-side não vai
           funcionar aqui.
+        </div>
+      )}
+
+      {!budgetOk && (
+        <div className="aero-panel border-(--aero-red)/70 p-3 text-sm font-medium text-(--aero-red-dark)">
+          ⚠ {budgetAdviceMessage(budget, fps)}
         </div>
       )}
 
@@ -281,7 +326,11 @@ export default function EmitterClient() {
       </div>
 
       <div className="aero-panel flex flex-wrap items-center gap-4 p-4">
-        <button onClick={togglePlay} disabled={!packetizeResult} className="aero-button aero-button-blue">
+        <button
+          onClick={togglePlay}
+          disabled={!packetizeResult || (!playing && !budgetOk)}
+          className="aero-button aero-button-blue"
+        >
           {playing ? '⏸ Pause' : '▶ Play'}
         </button>
 
@@ -319,6 +368,17 @@ export default function EmitterClient() {
             ))}
           </select>
         </label>
+
+        <label className="flex items-center gap-2 text-sm font-semibold text-(--aero-ink)">
+          bitrate
+          <select value={bitrate} onChange={(e) => setBitrate(Number(e.target.value))} className="aero-select">
+            {BITRATE_OPTIONS.map((b) => (
+              <option key={b} value={b}>
+                {b / 1000}kbps
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <label className="aero-panel flex flex-col gap-1 p-4 text-sm font-semibold text-(--aero-ink)">
@@ -335,10 +395,12 @@ export default function EmitterClient() {
       </label>
 
       <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+        <HudStat label="orçamento" value={`${budget.ratio.toFixed(2)}× tempo real`} warn={!budgetOk} />
         <HudStat label="seq atual" value={`${hud.seq}${hud.isRepeat ? ' (repeat)' : ''}`} />
         <HudStat label="fps real" value={hud.actualFps.toFixed(0)} />
         <HudStat label="bytes/frame" value={`${hud.bytesPerFrame} B`} />
         <HudStat label="throughput" value={`${hud.throughputKbps.toFixed(1)} kbps`} />
+        <HudStat label="pacotes/QR" value={String(budget.packetsPerSegment)} />
         <HudStat label="segmentos" value={String(packetizeResult?.segments.length ?? 0)} />
         <HudStat label="duração total" value={`${(totalDurationMs / 1000).toFixed(1)} s`} />
       </dl>
@@ -346,11 +408,11 @@ export default function EmitterClient() {
   );
 }
 
-function HudStat({ label, value }: { label: string; value: string }) {
+function HudStat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div className="aero-chip flex justify-between gap-2 px-3 py-2">
       <dt className="text-(--aero-ink-soft)">{label}</dt>
-      <dd className="font-mono font-semibold text-(--aero-blue-dark)">{value}</dd>
+      <dd className={`font-mono font-semibold ${warn ? 'text-(--aero-red-dark)' : 'text-(--aero-blue-dark)'}`}>{value}</dd>
     </div>
   );
 }

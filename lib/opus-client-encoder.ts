@@ -69,7 +69,7 @@ async function decodeToMonoPcm(file: File): Promise<Float32Array> {
  */
 export async function encodeFileToOpusPackets(
   file: File,
-  bitrate = 40_000,
+  bitrate = 24_000,
   onProgress?: (p: EncodeProgress) => void,
 ): Promise<EncodeResult> {
   if (!isOpusEncodeSupported()) {
@@ -99,6 +99,11 @@ export async function encodeFileToOpusPackets(
     sampleRate: OPUS_SAMPLE_RATE,
     numberOfChannels: 1,
     bitrate,
+    // Constant bitrate — the wire protocol now stores one packetSize for the
+    // whole segment instead of a per-packet length prefix, which only holds
+    // up if every 20ms packet really is the same byte size. See
+    // packOpusPayload() in lib/protocol.ts.
+    bitrateMode: 'constant',
     opus: { frameDuration: OPUS_FRAME_MS * 1000 }, // microseconds
   });
 
