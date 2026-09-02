@@ -43,3 +43,38 @@ export function getByteCapacity(version: number, ecc: EccLevel): number {
   cache.set(key, lo);
   return lo;
 }
+
+const alphaCache = new Map<string, number>();
+
+function fitsAtAlphaLength(len: number, version: number, ecc: EccLevel): boolean {
+  try {
+    // '0' is in the alphanumeric-mode character set — same technique as
+    // fitsAtLength above, just forcing mode:'alphanumeric' instead of 'byte'.
+    QRCode.create([{ data: '0'.repeat(len), mode: 'alphanumeric' }], {
+      version,
+      errorCorrectionLevel: ecc,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Maximum alphanumeric-mode payload (in *characters*, not bytes) that fits at this version/ECC. */
+export function getAlphanumericCapacity(version: number, ecc: EccLevel): number {
+  const key = `${version}:${ecc}`;
+  const cached = alphaCache.get(key);
+  if (cached !== undefined) return cached;
+
+  // Upper bound: alphanumeric packs ~2 chars per byte-mode byte at best
+  // (11 bits/2 chars vs 8 bits/byte), so byte-mode's cap is a safe ceiling.
+  let lo = 0;
+  let hi = 2953 * 2;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (fitsAtAlphaLength(mid, version, ecc)) lo = mid;
+    else hi = mid - 1;
+  }
+  alphaCache.set(key, lo);
+  return lo;
+}
